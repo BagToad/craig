@@ -105,25 +105,21 @@ func (db *DB) CreatePomoSession(messageID, channelID, guildID string) (*PomoSess
 	return db.GetPomoSessionByID(id)
 }
 
-// GetPomoSessionByID gets a session by ID
-func (db *DB) GetPomoSessionByID(id int64) (*PomoSession, error) {
+// scanPomoSession is a helper method to scan and process database row results
+func scanPomoSession(row *sql.Row) (*PomoSession, error) {
 	var session PomoSession
 	var startTime, createdAt, updatedAt int64
 	var userID, voiceChannelID sql.NullString
 	var startTimePtr sql.NullInt64
 
-	err := db.conn.QueryRow(`
-		SELECT id, message_id, channel_id, guild_id, user_id, state, 
-		       voice_channel_id, start_time, elapsed_seconds, created_at, updated_at
-		FROM pomo_sessions WHERE id = ?
-	`, id).Scan(
+	err := row.Scan(
 		&session.ID, &session.MessageID, &session.ChannelID, &session.GuildID,
 		&userID, &session.State, &voiceChannelID, &startTimePtr,
 		&session.ElapsedSeconds, &createdAt, &updatedAt,
 	)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pomo session: %w", err)
+		return nil, fmt.Errorf("failed to scan pomo session: %w", err)
 	}
 
 	if userID.Valid {
@@ -144,43 +140,26 @@ func (db *DB) GetPomoSessionByID(id int64) (*PomoSession, error) {
 	return &session, nil
 }
 
+// GetPomoSessionByID gets a session by ID
+func (db *DB) GetPomoSessionByID(id int64) (*PomoSession, error) {
+	row := db.conn.QueryRow(`
+		SELECT id, message_id, channel_id, guild_id, user_id, state, 
+		       voice_channel_id, start_time, elapsed_seconds, created_at, updated_at
+		FROM pomo_sessions WHERE id = ?
+	`, id)
+
+	return scanPomoSession(row)
+}
+
 // GetPomoSessionByMessageID gets a session by message ID
 func (db *DB) GetPomoSessionByMessageID(messageID string) (*PomoSession, error) {
-	var session PomoSession
-	var startTime, createdAt, updatedAt int64
-	var userID, voiceChannelID sql.NullString
-	var startTimePtr sql.NullInt64
-
-	err := db.conn.QueryRow(`
+	row := db.conn.QueryRow(`
 		SELECT id, message_id, channel_id, guild_id, user_id, state, 
 		       voice_channel_id, start_time, elapsed_seconds, created_at, updated_at
 		FROM pomo_sessions WHERE message_id = ?
-	`, messageID).Scan(
-		&session.ID, &session.MessageID, &session.ChannelID, &session.GuildID,
-		&userID, &session.State, &voiceChannelID, &startTimePtr,
-		&session.ElapsedSeconds, &createdAt, &updatedAt,
-	)
+	`, messageID)
 
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pomo session: %w", err)
-	}
-
-	if userID.Valid {
-		session.UserID = userID.String
-	}
-	if voiceChannelID.Valid {
-		session.VoiceChannelID = voiceChannelID.String
-	}
-	if startTimePtr.Valid {
-		startTime = startTimePtr.Int64
-		t := time.Unix(startTime, 0)
-		session.StartTime = &t
-	}
-
-	session.CreatedAt = time.Unix(createdAt, 0)
-	session.UpdatedAt = time.Unix(updatedAt, 0)
-
-	return &session, nil
+	return scanPomoSession(row)
 }
 
 // UpdatePomoSession updates a pomo session
