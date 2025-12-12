@@ -5,11 +5,13 @@ A Discord bot that helps users stay focused with pomodoro sessions. Craig joins 
 ## Features
 
 - `/setup-pomo` - Creates an interactive pomodoro panel with:
-  - **Start** button - Begins a pomodoro session, bot joins your voice channel and plays lofi music
-  - **Pause** button - Pauses the timer and music
+  - **Start** button - Begins a pomodoro session, bot joins your voice channel
+  - **Pause** button - Pauses the timer
   - **Stop** button - Stops the timer and disconnects from voice
 
 The bot tracks time and provides a clean interface for managing focus sessions.
+
+**Note:** Audio playback (lofi music) is not yet implemented. The bot currently joins voice channels but does not stream audio. See `internal/commands/modules/pomo/audio.go` for implementation notes.
 
 ## Architecture
 

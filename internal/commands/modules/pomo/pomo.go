@@ -216,6 +216,9 @@ func (m *PomoModule) handleStart(s *discordgo.Session, i *discordgo.InteractionC
 		return
 	}
 
+	// Start playing lofi music (placeholder for now)
+	go m.playAudio(vc)
+
 	// Create session state
 	stopChan := make(chan struct{})
 	ticker := time.NewTicker(1 * time.Second)
