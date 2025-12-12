@@ -48,6 +48,6 @@ logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
-craig
+/craig
 config.yaml
 config/*
