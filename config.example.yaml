@@ -1,0 +1,15 @@
+# Example configuration file for Craig Pomodoro Bot
+# Copy this to config.yaml and fill in your values
+
+# Discord Bot Configuration
+bot_token: "your-discord-bot-token-here"
+
+# Server configuration
+server_id: "your-server-id-here"
+
+# For sort of random names in commands
+crypto_salt: "something-random"
+
+# Super admins. Replace with actual user IDs.
+super_admins:
+  - "user_id_1"

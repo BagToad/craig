@@ -1,0 +1,179 @@
+package config
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
+	"github.com/charmbracelet/log"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	v      *viper.Viper
+	Logger *log.Logger
+}
+
+// NewConfig loads the configuration from various sources using viper
+func NewConfig() (*Config, error) {
+	v := viper.New()
+
+	// Set config name and paths
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath(".")
+
+	// Set defaults
+	setDefaults(v)
+
+	// Try to read config file (don't error if it doesn't exist)
+	if err := v.ReadInConfig(); err != nil {
+		// Config file can't be read, continue with env vars and defaults
+		l := log.New(os.Stderr)
+		l.Warnf("error reading config file: %v\nContinuing with envs...", err)
+	}
+
+	// Bind environment variables
+	err := bindEnvs(v)
+	if err != nil {
+		return nil, fmt.Errorf("error binding environment variables: %w", err)
+	}
+
+	newLogFile, err := newLogFile(v.GetString("log_dir"))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create log file: %w", err)
+	}
+
+	if err := pruneOldLogFiles(v.GetString("log_dir")); err != nil {
+		return nil, fmt.Errorf("failed to prune old log files: %w", err)
+	}
+
+	// Log both to a file and to stderr
+	w := io.MultiWriter(os.Stderr, newLogFile)
+
+	newCfg := &Config{
+		v: v,
+		Logger: log.NewWithOptions(w, log.Options{
+			ReportCaller:    true,
+			ReportTimestamp: true,
+			TimeFormat:      time.Kitchen,
+		}),
+	}
+
+	// Validate required fields
+	if err := validateConfig(newCfg); err != nil {
+		return nil, err
+	}
+
+	return newCfg, nil
+}
+
+// newLogFile generates a new log file
+func newLogFile(dir string) (*os.File, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("log directory is not set")
+	}
+
+	// Create dir if it doesn't exist
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create log directory: %w", err)
+	}
+
+	// Generate a timestamped log file name in yyyy-mm-dd format
+	fileName := fmt.Sprintf("craig_%s.log", time.Now().Format("2006-01-02"))
+
+	// If it exists, just return the existing file
+	if _, err := os.Stat(filepath.Join(dir, fileName)); err == nil {
+		return os.OpenFile(filepath.Join(dir, fileName), os.O_APPEND|os.O_WRONLY, 0644)
+	}
+
+	// Otherwise, create a new log file
+	file, err := os.Create(filepath.Join(dir, fileName))
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
+func (c *Config) RotateAndPruneLogs() error {
+	// First rotate the log file
+	newLogFile, err := newLogFile(c.v.GetString("log_dir"))
+	if err != nil {
+		return fmt.Errorf("failed to rotate and create new log file: %w", err)
+	}
+
+	w := io.MultiWriter(os.Stderr, newLogFile)
+	c.Logger.SetOutput(w)
+
+	// After rotating, we can prune old log files
+	err = pruneOldLogFiles(c.v.GetString("log_dir"))
+	if err != nil {
+		return fmt.Errorf("failed to prune old log files: %w", err)
+	}
+
+	c.Logger.Info("Log file rotated and old logs pruned successfully")
+
+	return nil
+}
+
+// pruneOldLogFiles removes log files older than 3 days
+func pruneOldLogFiles(dir string) error {
+	logFiles, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("failed to read log directory: %w", err)
+	}
+
+	for _, file := range logFiles {
+		if file.IsDir() {
+			continue
+		}
+
+		// Check if the file is older than 3 days
+		info, err := file.Info()
+		if err != nil {
+			continue
+		}
+		if time.Since(info.ModTime()) > 3*24*time.Hour {
+			if err := os.Remove(filepath.Join(dir, file.Name())); err != nil {
+				return fmt.Errorf("failed to remove old log file %s: %w", file.Name(), err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// setDefaults sets default configuration values
+func setDefaults(v *viper.Viper) {
+	v.SetDefault("log_dir", "./logs")
+	v.SetDefault("database_path", "./craig.db")
+}
+
+// bindEnvs binds environment variables to viper keys
+func bindEnvs(v *viper.Viper) error {
+	bindings := []struct {
+		key string
+		env string
+	}{
+		{"bot_token", "CRAIG_BOT_TOKEN"},
+		{"log_dir", "CRAIG_LOG_DIR"},
+	}
+
+	for _, binding := range bindings {
+		if err := v.BindEnv(binding.key, binding.env); err != nil {
+			return fmt.Errorf("error binding %s environment variable: %w", binding.key, err)
+		}
+	}
+	return nil
+}
+
+// validateConfig validates that all required configuration fields are present
+func validateConfig(cfg *Config) error {
+	if cfg.v.GetString("bot_token") == "" {
+		return fmt.Errorf("bot_token is required (set CRAIG_BOT_TOKEN environment variable)")
+	}
+
+	return nil
+}
